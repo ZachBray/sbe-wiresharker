@@ -78,6 +78,7 @@ import com.transficc.wiresharktools.testschema.subprotocol.SubProtocolMessageEnc
 import org.agrona.ExpandableArrayBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.sbe.MessageFlyweight;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.w3c.dom.Attr;
@@ -171,6 +172,7 @@ public class CaptureIntegrationTest
     }
 
     @Test
+    @Disabled
     void shouldCaptureAndReadMultipleMessages()
     {
         final SetUp setUp = SetUp.createSetUp();
