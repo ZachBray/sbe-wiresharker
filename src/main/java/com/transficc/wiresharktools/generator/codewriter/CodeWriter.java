@@ -1,5 +1,9 @@
 package com.transficc.wiresharktools.generator.codewriter;
 
+import com.transficc.wiresharktools.generator.GenUtils;
+import com.transficc.wiresharktools.generator.codewriter.ast.*;
+import com.transficc.wiresharktools.generator.schemaparsing.*;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
@@ -8,49 +12,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import com.transficc.wiresharktools.generator.Frame;
-import com.transficc.wiresharktools.generator.GenUtils;
-import com.transficc.wiresharktools.generator.codewriter.ast.ArrayDecodeStatements;
-import com.transficc.wiresharktools.generator.codewriter.ast.BaseClassHeader;
-import com.transficc.wiresharktools.generator.codewriter.ast.BasicDecodeStatements;
-import com.transficc.wiresharktools.generator.codewriter.ast.BitFieldProtoType;
-import com.transficc.wiresharktools.generator.codewriter.ast.ChoiceDecodeStatements;
-import com.transficc.wiresharktools.generator.codewriter.ast.CodeBlock;
-import com.transficc.wiresharktools.generator.codewriter.ast.CompositeDecodeStatements;
-import com.transficc.wiresharktools.generator.codewriter.ast.ConstantDecodeStatements;
-import com.transficc.wiresharktools.generator.codewriter.ast.DecodeFunction;
-import com.transficc.wiresharktools.generator.codewriter.ast.DispatchEntry;
-import com.transficc.wiresharktools.generator.codewriter.ast.DispatchFunction;
-import com.transficc.wiresharktools.generator.codewriter.ast.EnumProtoType;
-import com.transficc.wiresharktools.generator.codewriter.ast.FieldsDeclaration;
-import com.transficc.wiresharktools.generator.codewriter.ast.HeaderDecodeFunction;
-import com.transficc.wiresharktools.generator.codewriter.ast.HeaderDecodeStatements;
-import com.transficc.wiresharktools.generator.codewriter.ast.LuaBaseCode;
-import com.transficc.wiresharktools.generator.codewriter.ast.LuaScript;
-import com.transficc.wiresharktools.generator.codewriter.ast.MessageDecodeFunction;
-import com.transficc.wiresharktools.generator.codewriter.ast.ProtoTypes;
-import com.transficc.wiresharktools.generator.codewriter.ast.ProtocolDecodeFunction;
-import com.transficc.wiresharktools.generator.codewriter.ast.RepeatingGroupDecodeStatements;
-import com.transficc.wiresharktools.generator.codewriter.ast.SchemaDispatcherFunction;
-import com.transficc.wiresharktools.generator.codewriter.ast.SimpleProtoType;
-import com.transficc.wiresharktools.generator.codewriter.ast.SyntheticProtoType;
-import com.transficc.wiresharktools.generator.codewriter.ast.VarLengthDecodeStatements;
-import com.transficc.wiresharktools.generator.codewriter.ast.VarLengthStringProtoType;
-import com.transficc.wiresharktools.generator.schemaparsing.CharacterArray;
-import com.transficc.wiresharktools.generator.schemaparsing.Choice;
-import com.transficc.wiresharktools.generator.schemaparsing.Composite;
-import com.transficc.wiresharktools.generator.schemaparsing.Constant;
-import com.transficc.wiresharktools.generator.schemaparsing.ConstantEnumeration;
-import com.transficc.wiresharktools.generator.schemaparsing.Enumeration;
-import com.transficc.wiresharktools.generator.schemaparsing.Field;
-import com.transficc.wiresharktools.generator.schemaparsing.Group;
-import com.transficc.wiresharktools.generator.schemaparsing.Message;
-import com.transficc.wiresharktools.generator.schemaparsing.PrimitiveArray;
-import com.transficc.wiresharktools.generator.schemaparsing.Protocol;
-import com.transficc.wiresharktools.generator.schemaparsing.SimpleType;
-import com.transficc.wiresharktools.generator.schemaparsing.VariableLengthData;
-
 
 import static com.transficc.wiresharktools.generator.GenUtils.camelCase;
 import static java.util.stream.Collectors.toMap;
@@ -65,9 +26,7 @@ public class CodeWriter
             final String protocolShortName,
             final String protocolDescription,
             final OutputStream out,
-            final List<Protocol> protocols,
-            final Frame frame,
-            final int[] ports
+            final List<Protocol> protocols
     )
     {
         final ProtoTypes protoTypes = new ProtoTypes();
@@ -90,17 +49,11 @@ public class CodeWriter
             );
         }
         final BaseClassHeader baseClassHeader = new BaseClassHeader(protocolTree, protocolShortName, protocolDescription);
-        addFrameHeader(protoTypes, fieldsDeclaration, frame.messageLengthType());
         final SchemaDispatcherFunction schemaDispatcherFunction = schemaDispatcherFunction(protocols.stream().collect(toMap(Protocol::id, Protocol::name)));
         final LuaBaseCode luaBaseCode = new LuaBaseCode(
                 schemaDispatcherFunction,
                 protocolTree,
-                protocolDescription,
-                ports,
-                frame.messageLengthType().lengthInBytes(),
-                frame.additionalDataInFrameLength(),
-                frame.offsetToMessageLength(),
-                frame.lengthIncludesFrame()
+            protocolDescription
         );
 
         final String output = LuaScript.render(
@@ -157,28 +110,41 @@ public class CodeWriter
             final CodeBlock<HeaderDecodeFunction> headerDecodeFunctions
     )
     {
-        addSbeHeaders(protoTypes, fields, protocol.messageHeader());
+        addSbeHeaders(protocol, protoTypes, fields, protocol.messageHeader());
         headerDecodeFunction(protocol.name(), headerDecodeFunctions, protocol.messageHeader());
     }
 
     private static void addSbeHeaders(
-            final ProtoTypes protoTypes,
-            final FieldsDeclaration fields,
-            final Composite composite
+        final Protocol protocol,
+        final ProtoTypes protoTypes,
+        final FieldsDeclaration fields,
+        final Composite composite
     )
     {
         for (final Field field : composite.fields())
         {
             final SimpleType simpleType = field.simpleType();
-            protoTypes.add(new SimpleProtoType(field.fullyQualifiedName(), field.name(), simpleType.fieldType(), simpleType.base()));
+            if (field.name().equals("templateId"))
+            {
+                final Map<Long, String> mapping = protocol.messages().stream().collect(toMap(
+                    msg -> (long)msg.id(),
+                    Message::name
+                ));
+                protoTypes.add(protoTypeDeclarationEnum(
+                    simpleType,
+                    camelCase(field.name()),
+                    field.fullyQualifiedName(),
+                    field.name(),
+                    new HashSet<>(),
+                    mapping,
+                    protocol.name()));
+            }
+            else
+            {
+                protoTypes.add(new SimpleProtoType(field.fullyQualifiedName(), field.name(), simpleType.fieldType(), simpleType.base()));
+            }
             fields.add(field.fullyQualifiedName());
         }
-    }
-
-    private static void addFrameHeader(final ProtoTypes protoTypes, final FieldsDeclaration fields, final SimpleType messageLengthType)
-    {
-        protoTypes.add(new SimpleProtoType("messageLength", "messageLength", messageLengthType.fieldType(), messageLengthType.base()));
-        fields.add("messageLength");
     }
 
     private static void parseField(

@@ -286,7 +286,7 @@ public class SchemaParser
             final Base base;
             if (encoding == null)
             {
-                throw new IllegalStateException("No encoding type set: " + type);
+                base = Base.ASCII;
             }
             else if (encoding.contains("ASCII"))
             {

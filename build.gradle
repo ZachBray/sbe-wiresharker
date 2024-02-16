@@ -32,13 +32,14 @@ test {
     }
 }
 
-def inputFiles = [
-        'src/test/resources/sample-schema.xml',
-        'src/test/resources/sub-protocol-schema.xml',
-]
-def outputDir = 'src/generateprotocol/java'
+def testProtocolDir = 'src/generateprotocol/java'
 
 task generateProtocols(type: JavaExec) {
+    def inputFiles = [
+            'src/test/resources/sample-schema.xml',
+            'src/test/resources/sub-protocol-schema.xml',
+    ]
+    def outputDir = testProtocolDir
     mainClass.set('uk.co.real_logic.sbe.SbeTool')
     classpath = configurations.sbe
     systemProperties(
@@ -59,10 +60,33 @@ task generateProtocols(type: JavaExec) {
     }
 }
 
-sourceSets.test.java.srcDirs += [outputDir]
+sourceSets.test.java.srcDirs += [testProtocolDir]
 
 compileTestJava.dependsOn 'generateProtocols'
 
 tasks.withType(JavaCompile) {
     options.warnings = false
+}
+
+task generateCustomProtocols(type: JavaExec) {
+    def inputFiles = [
+            "aeron/aeron-archive/src/main/resources/archive/aeron-archive-codecs.xml",
+            "aeron/aeron-cluster/src/main/resources/cluster/aeron-cluster-codecs.xml",
+            "../../adaptive/aeron-io-samples/cluster-protocol/src/main/resources/protocol/protocol-codecs.xml"
+    ]
+    def outputDir = "${buildDir}/generated-sources/aeron-cluster"
+    mainClass.set('com.transficc.wiresharktools.generator.SbeLuaGenerator')
+    classpath = sourceSets.main.runtimeClasspath
+    systemProperties(
+            'protocol.name': 'mushroom',
+            'envelope.message.names': 'SessionMessageHeader'
+    )
+    args = inputFiles
+
+    inputs.files inputFiles
+    outputs.dir outputDir
+
+    doLast {
+        println 'Regenerated wireshark Aeron Cluster protocols'
+    }
 }

@@ -42,4 +42,11 @@ public final class SchemaDispatcherFunction implements Renderable
                                        "        offset = decode" + GenUtils.properCase(idAndName.getValue()) + "(buffer, offset, subTree)")
                        .collect(Collectors.joining("\n    elseif ")) + "\n    end\n";
     }
+
+    public String renderCondition()
+    {
+        return schemasById.keySet().stream()
+            .map(s -> "schemaId == " + s)
+            .collect(Collectors.joining(" or "));
+    }
 }
